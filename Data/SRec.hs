@@ -2,6 +2,7 @@
 module Data.SRec
   ( SRec (..)
   , parseSRec
+  , printSRec
   , mergeBlocks
   , mergeAllBlocks
   , mergeContiguousBlocks
@@ -14,24 +15,20 @@ import Data.Bits
 import Data.Word
 import Text.Printf
 
-data SRec = SRec
-  { blocks :: [(Int, ByteString)]  -- ^ Starting address of block and block data.
-  , start  :: Int                  -- ^ Starting address of program for S7 record.
-  }
+newtype SRec = SRec [(Int, ByteString)]  -- ^ Starting address of block and block data.
 
 -- | Parse an s-record.
 parseSRec :: String -> SRec
-parseSRec a = SRec { blocks = blocks, start = start }
+parseSRec a = SRec blocks
   where
   records = [ record l | l@('S':_) <- lines a ]
   blocks = mergeContiguousBlocks [ addr (a, b) | (a, b) <- records, elem a [1, 2, 3] ]
-  start = fst $ head [ addr (a, b) | (a, b) <- records, elem a [7, 8, 9] ]
 
   record :: String -> (Int, ByteString)
-  record a = (if validType then rType else error $ "only S1, S2, S3, S5, and S7 supported: " ++ a, if checksum /= checksum' then error $ "failed checksum: " ++ a else B.pack field)
+  record a = (if validType then rType else error $ "only S0, S1, S2, S3, S5, and S7 supported: " ++ a, if checksum /= checksum' then error $ "failed checksum: " ++ a else B.pack field)
     where
     rType = read $ take 1 $ tail a
-    validType = elem rType [1, 2, 3, 5, 7, 8, 9]
+    validType = elem rType [0, 1, 2, 3, 5, 7, 8, 9]
     byteCount = read ("0x" ++ take 2 (drop 2 a))
     bytes = f $ take (2 * byteCount) $ drop 4 a
     f :: String -> [Word8]
@@ -55,11 +52,19 @@ parseSRec a = SRec { blocks = blocks, start = start }
       9 -> 2
       _ -> undefined
 
--- | Formates an s-record file.
+-- | Prints (formats) an s-record file.
 printSRec :: SRec -> String
-printSRec a = undefined
+printSRec (SRec blocks) = unlines $ map line $ concatMap (splitBlock 64) blocks
   where
-  [ printf "S3%02X%08X%s%02X\n" (B.length dat + 5) addr (concat [ printf "%02X" byte | byte <- dat ])  splitBlock 64 | block <- blocks a, (addr, dat) <- splitBlock 64 block ]
+  line :: (Int, ByteString) -> String
+  line (addr, dat) = "S3" ++ hex a3
+    where
+    a1 = [ fromIntegral $ shiftR addr n | n <- [24, 16, 8, 0] ] ++ B.unpack dat
+    a2 = [fromIntegral $ length a1 + 1] ++ a1
+    a3 = a2 ++ [complement $ sum a2]
+    hex :: [Word8] -> String
+    hex a = concat [ printf "%02X" byte | byte <- a ]
+    
 
 -- | Merge consecutive blocks into one.  If blocks are not contiguous, the padding byte is used to fill in the extra space.  If the blocks overlap, an error is thrown.
 mergeBlocks :: Word8 -> [(Int, ByteString)] -> (Int, ByteString)
@@ -73,7 +78,7 @@ mergeBlocks padding blocks = foldl1 (mergeTwoBlocks padding) blocks
 
 -- | Merge all blocks in s-record into one.
 mergeAllBlocks :: Word8 -> SRec -> SRec
-mergeAllBlocks padding a = a { blocks = [mergeBlocks padding $ blocks a] }
+mergeAllBlocks padding (SRec blocks) = SRec [mergeBlocks padding blocks]
 
 -- | Merge contiguous consecutive blocks.
 mergeContiguousBlocks :: [(Int, ByteString)] -> [(Int, ByteString)]
@@ -87,5 +92,5 @@ mergeContiguousBlocks ((addrA, dataA) : (addrB, dataB) : rest)
 splitBlock :: Int -> (Int, ByteString) -> [(Int, ByteString)]
 splitBlock n (addr, dat)
   | B.null dat = []
-  | otherwise = (addr, B.take n dat) : splitBlock (addr + n, B.drop n dat)
+  | otherwise = (addr, B.take n dat) : splitBlock n (addr + n, B.drop n dat)
 
