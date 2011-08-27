@@ -1,12 +1,14 @@
 name:    srec
-version: 0.0.0
+version: 0.1.0
 
-category: Data
+category: Data, Embedded
 
-synopsis: Reading S-Record files.
+synopsis: Parsing and processing s-records.
 
 description:
-  TODO
+  S-records are common binary files used in embedded programming.
+  This library provides basic parsing, generation, and other
+  utilities for s-records.
 
 author:     Tom Hawkins <tomahawkins@gmail.com>
 maintainer: Tom Hawkins <tomahawkins@gmail.com>
@@ -21,13 +23,12 @@ cabal-version: >= 1.6
 
 library
     build-depends:
-        base       >= 4.0 && < 5
+        base       >= 4.0 && < 5,
+        bytestring >= 0.9 && < 1.0
 
     exposed-modules:
         Data.SRec
 
-    if impl(ghc > 6.8)
-          ghc-options: -fwarn-tabs
     ghc-options:       -W
 
 source-repository head
